@@ -1,5 +1,5 @@
 #include "tensor.hpp"
-
+#include "../../include/llaisys.h"
 #include "../utils.hpp"
 
 #include <cstring>
@@ -164,27 +164,112 @@ void Tensor::debug() const {
 }
 
 bool Tensor::isContiguous() const {
-    TO_BE_IMPLEMENTED();
-    return true;
+    auto shape = this->shape();    
+    auto strides = this->strides();    
+    if (shape.empty()) {    
+        return true;   
+    }    
+      
+    for (size_t i = 0; i < shape.size(); ++i) {    
+        size_t expected_stride = 1;    
+        for (size_t j = i + 1; j < shape.size(); ++j) {    
+            expected_stride *= shape[j];    
+        }    
+          
+        if (strides[i] != expected_stride) {    
+            return false;    
+        }    
+    }    
+    return true;  
 }
 
 tensor_t Tensor::permute(const std::vector<size_t> &order) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    if (order.size() != this->shape().size()) {  
+        throw std::invalid_argument("permute order must match tensor dimensions");  
+    }  
+    
+    std::vector<bool> used(this->shape().size(), false);  
+    for (size_t idx : order) {  
+        if (idx >= this->shape().size()) {  
+            throw std::invalid_argument("permute order contains invalid dimension index");  
+        }  
+        if (used[idx]) {  
+            throw std::invalid_argument("permute order contains duplicate dimension indices");  
+        }  
+        used[idx] = true;  
+    }  
+       
+    std::vector<size_t> new_shape;  
+    std::vector<ptrdiff_t> new_strides;  
+      
+    for (size_t idx : order) {  
+        new_shape.push_back(this->shape()[idx]);  
+        new_strides.push_back(this->strides()[idx]);  
+    }  
+       
+    TensorMeta new_meta;  
+    new_meta.dtype = this->dtype();  
+    new_meta.shape = new_shape;  
+    new_meta.strides = new_strides;  
+    return std::shared_ptr<Tensor>(new Tensor(new_meta, _storage, this->_offset));
 }
 
 tensor_t Tensor::view(const std::vector<size_t> &shape) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    size_t new_numel = 1;  
+    for (size_t dim : shape) {  
+        new_numel *= dim;  
+    }  
+      
+    if (new_numel != this->numel()) {  
+        throw std::invalid_argument("view shape has different number of elements than tensor");  
+    }  
+      
+     
+    if (!this->isContiguous()) {  
+        throw std::invalid_argument("view can only be applied to contiguous tensors");  
+    }  
+      
+   
+    std::vector<ptrdiff_t> new_strides(shape.size());  
+    new_strides[shape.size() - 1] = 1;  
+      
+    for (int i = shape.size() - 2; i >= 0; --i) {  
+        new_strides[i] = new_strides[i + 1] * shape[i + 1];  
+    }  
+      
+    
+    TensorMeta new_meta;  
+    new_meta.dtype = this->dtype();  
+    new_meta.shape = shape;  
+    new_meta.strides = new_strides;  
+    return std::shared_ptr<Tensor>(new Tensor(new_meta, _storage, this->_offset)); 
 }
 
 tensor_t Tensor::slice(size_t dim, size_t start, size_t end) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    if (dim >= this->shape().size()) {  
+        throw std::invalid_argument("slice dimension out of range");  
+    }  
+    if (start >= end || end > this->shape()[dim]) {  
+        throw std::invalid_argument("slice start/end indices out of range");  
+    }  
+
+    auto shape = this->shape();
+    shape[dim] = end - start;
+    auto new_strides = this->strides();
+
+    TensorMeta new_meta;  
+    new_meta.dtype = this->dtype();  
+    new_meta.shape = shape;  
+    new_meta.strides = new_strides;  
+    auto _offset = this->_offset + start * new_strides[dim]*this->elementSize();
+
+    return std::shared_ptr<Tensor>(new Tensor(new_meta, _storage, _offset)); 
 }
 
 void Tensor::load(const void *src_) {
-    TO_BE_IMPLEMENTED();
+    core::context().setDevice(deviceType(), deviceId());  
+    auto &runtime = core::context().runtime();  
+    runtime.api()->memcpy_sync(data(), src_, this->numel() * this->elementSize(), LLAISYS_MEMCPY_H2D); 
 }
 
 tensor_t Tensor::contiguous() const {
