@@ -34,15 +34,13 @@ namespace llaisys::models{
     tensor_t attn_output;  
     tensor_t mlp_output;
     tensor_t _q;  
-    tensor_t _k;  
-    tensor_t _v;  
     tensor_t gate;  
     tensor_t up;  
     tensor_t logits;
 
     void _allocate_weights();
     void _allocate_tensor();
-    tensor_t _forward_layer(tensor_t hidden_states, size_t layer_idx, size_t seq_len, size_t start_pos);
+    void _forward_layer(size_t layer_idx, size_t start_pos, size_t seq_len);
     int64_t _sample_token(tensor_t logits);
     
     public:
