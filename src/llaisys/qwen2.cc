@@ -265,18 +265,20 @@ __C {
         float scale = 1.0f / std::sqrt(static_cast<float>(dh)); // scale for attention
         float rms_eps = model->meta->epsilon; // epsilon for RMSNorm
         float rope_theta = model->meta->theta; // theta for RoPE
-
+        
         // 1. intput token_ids -> tensor
         size_t input_tensor_shape[1] = {seqlen};
+        
         llaisysTensor_t input_tensor = tensorCreate(input_tensor_shape, 1, LLAISYS_DTYPE_I64, model->device, model->device_ids[0]);
+        
         tensorLoad(input_tensor, token_ids);
-
+        
         // 2. Embedding lookup: [seqlen] -> [seqlen, hs]
         size_t output_embedding_tensor_shape[2] = {seqlen, hs};
         llaisysTensor_t output_embedding_tensor = tensorCreate(output_embedding_tensor_shape, 2, model->meta->dtype, model->device, model->device_ids[0]);
         llaisysEmbedding(output_embedding_tensor, input_tensor, model->weights->in_embed);
-
-
+        
+        
         
         // output_hidden_layer_tensor is used to store the output of the hidden layer
         llaisysTensor_t output_hidden_layer_tensor = output_embedding_tensor;
@@ -291,8 +293,8 @@ __C {
         }
         tensorLoad(position_ids, pos_data_cpu);
         delete[] pos_data_cpu;
-
-
+        
+        
 
         // 3. Transformer hidden layers
         for (size_t i = 0; i < nlayer; i++) {
@@ -376,21 +378,20 @@ __C {
                 k_for_attn = k_rope_tensor;
                 kv_seq_len = seqlen;
             }
-            
+           
             
             llaisysSelfAttention(output_self_attn_tensor, q_rope_tensor, k_for_attn, v_for_attn, scale);
             
             size_t output_self_attn_tensor_shape[2] = {seqlen, nh * dh};
             output_self_attn_tensor = tensorReshape(output_self_attn_tensor, output_self_attn_tensor_shape, 2);
-
-
+            
+            
             // 3.6 Self-attention output projection
             llaisysTensor_t attn_o_w = model->weights->attn_o_w[i];
             size_t o_tensor_shape[2] = {seqlen, hs};
             llaisysTensor_t o_tensor = tensorCreate(o_tensor_shape, 2, model->meta->dtype, model->device, model->device_ids[0]);
+            
             llaisysLinear(o_tensor, output_self_attn_tensor, attn_o_w, nullptr);
-
-
 
             // 3.7 Residual connection after attn
             size_t output_res1_tensor_shape[2] = {seqlen, hs};
@@ -442,7 +443,7 @@ __C {
                 tensorDestroy(k_rope_tensor);
                 tensorDestroy(v_tensor);
             }
-
+            
             // release intermediate tensors
             tensorDestroy(output_input_layernorm_tensor);
             tensorDestroy(q_tensor);
@@ -457,7 +458,6 @@ __C {
             tensorDestroy(swiglu_tensor);
             tensorDestroy(mlp_down_tensor);
         }
-
         // 4. Output LayerNorm
         llaisysTensor_t final_layernorm_w = model->weights->out_norm_w;
         size_t output_final_layernorm_shape[2] = {seqlen, hs};

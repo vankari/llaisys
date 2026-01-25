@@ -157,8 +157,8 @@ class Qwen2:
         
         for file in sorted(self.model_path.glob("*.safetensors")):
             data = safetensors.safe_open(file, framework="torch", device="cpu")
-            '''self._load_embedding_layers(data, weights, maybe_cast_tensor)
-            self._load_attention_layers(data, weights, maybe_cast_tensor)'''
+            self._load_embedding_layers(data, weights, maybe_cast_tensor)
+            self._load_attention_layers(data, weights, maybe_cast_tensor)
             self._load_mlp_layers(data, weights, maybe_cast_tensor)
         
     
