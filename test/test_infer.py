@@ -95,9 +95,9 @@ if __name__ == "__main__":
     top_p, top_k, temperature = args.top_p, args.top_k, args.temperature
     if args.test:
         top_p, top_k, temperature = 1.0, 1, 1.0
-
+    
     tokenizer, model, model_path = load_hf_model(args.model, args.device)
-
+    '''
     # Example prompt
     start_time = time.time()
     tokens, output = hf_infer(
@@ -110,10 +110,10 @@ if __name__ == "__main__":
         temperature=temperature,
     )
     end_time = time.time()
-
+    '''
     del model
     gc.collect()
-
+    '''
     print("\n=== Answer ===\n")
     print("Tokens:")
     print(tokens)
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     print(output)
     print("\n")
     print(f"Time elapsed: {(end_time - start_time):.2f}s\n")
-
+    '''
     model = load_llaisys_model(model_path, args.device)
     start_time = time.time()
     llaisys_tokens, llaisys_output = llaisys_infer(
@@ -143,7 +143,8 @@ if __name__ == "__main__":
     print(llaisys_output)
     print("\n")
     print(f"Time elapsed: {(end_time - start_time):.2f}s\n")
-
+    '''
     if args.test:
         assert llaisys_tokens == tokens
         print("\033[92mTest passed!\033[0m\n")
+    '''

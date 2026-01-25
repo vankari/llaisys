@@ -272,19 +272,132 @@ void Tensor::load(const void *src_) {
     runtime.api()->memcpy_sync(data(), src_, this->numel() * this->elementSize(), LLAISYS_MEMCPY_H2D); 
 }
 
-tensor_t Tensor::contiguous() const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
-}
 
+tensor_t Tensor::contiguous() const {
+    if (this->isContiguous()) {
+        return std::shared_ptr<Tensor>(new Tensor(_meta, _storage, _offset));
+    }
+    
+    auto new_tensor = Tensor::create(_meta.shape, _meta.dtype, deviceType(), deviceId());
+    
+    size_t total_elems = this->numel();
+    size_t elem_size = this->elementSize();
+    
+    if (deviceType() == LLAISYS_DEVICE_CPU) {
+        // CPU: 使用多维索引遍历
+        const std::byte* src_ptr = this->data();
+        std::byte* dst_ptr = new_tensor->data();
+        
+        std::vector<size_t> indices(shape().size(), 0);
+        
+        for (size_t flat_idx = 0; flat_idx < total_elems; flat_idx++) {
+            // 计算源地址（使用 strides）
+            size_t src_offset = 0;
+            for (size_t i = 0; i < indices.size(); i++) {
+                src_offset += indices[i] * strides()[i];
+            }
+            
+            // 拷贝一个元素
+            std::memcpy(
+                dst_ptr + flat_idx * elem_size,
+                src_ptr + src_offset * elem_size,
+                elem_size
+            );
+            
+            // 更新多维索引（类似进位）
+            for (int i = indices.size() - 1; i >= 0; i--) {
+                indices[i]++;
+                if (indices[i] < shape()[i]) {
+                    break;
+                }
+                indices[i] = 0;
+            }
+        }
+    } else {
+        // GPU: 通过 CPU 中转
+        auto cpu_src = this->to(LLAISYS_DEVICE_CPU, 0);
+        auto cpu_contiguous = cpu_src->contiguous();
+        
+        core::context().setDevice(deviceType(), deviceId());
+        core::context().runtime().api()->memcpy_sync(
+            new_tensor->data(),
+            cpu_contiguous->data(),
+            total_elems * elem_size,
+            LLAISYS_MEMCPY_H2D
+        );
+    }
+    
+    return new_tensor;
+}
 tensor_t Tensor::reshape(const std::vector<size_t> &shape) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    // Check contiguous and shape compatibility
+    if (!this->isContiguous()) {
+        throw std::runtime_error("Reshape failed: tensor must be contiguous");
+    }    
+    size_t new_numel = 1;
+    for (auto d : shape) new_numel *= d;
+    if (this->numel() != new_numel) {
+        throw std::runtime_error("Reshape failed: total number of elements must not change");
+    }
+
+    // Calculate new strides
+    std::vector<ptrdiff_t> new_strides(shape.size());
+    if (!shape.empty()) {
+        new_strides.back() = 1;
+        for (int i = static_cast<int>(shape.size()) - 2; i >= 0; --i) {
+            new_strides[i] = new_strides[i + 1] * shape[i + 1];
+        }
+    }
+
+    // Construct new tensor meta
+    TensorMeta new_meta = this->_meta;
+    new_meta.shape = std::move(shape);
+    new_meta.strides = std::move(new_strides);
+    return std::shared_ptr<Tensor>(new Tensor(new_meta, _storage, this->_offset));
 }
 
 tensor_t Tensor::to(llaisysDeviceType_t device_type, int device) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    // If already on the target device, return a copy (or the same tensor)
+    if (_storage->deviceType() == device_type && (device == -1 || _storage->deviceId() == device)) {
+        return std::shared_ptr<Tensor>(new Tensor(_meta, _storage, this->_offset));
+    }
+    
+    // Create a new tensor on the target device
+    if (device == -1) {
+        device = 0; // Default device ID
+    }
+    
+    auto new_tensor = Tensor::create(_meta.shape, _meta.dtype, device_type, device);
+    
+    // Make sure source tensor is contiguous before copying
+    tensor_t source = isContiguous() ? 
+        std::shared_ptr<Tensor>(new Tensor(_meta, _storage, this->_offset)) : 
+        contiguous();
+    
+    // Copy data from source device to target device
+    void* src_ptr = source->data();
+    void* dst_ptr = new_tensor->data();
+    size_t num_bytes = source->numel() * source->elementSize();
+    
+    
+    // Determine memcpy kind based on source and destination devices
+    llaisysMemcpyKind_t kind;
+    if (_storage->deviceType() == LLAISYS_DEVICE_CPU && device_type == LLAISYS_DEVICE_CPU) {
+        kind = LLAISYS_MEMCPY_H2H;
+    } else if (_storage->deviceType() == LLAISYS_DEVICE_CPU && device_type != LLAISYS_DEVICE_CPU) {
+        kind = LLAISYS_MEMCPY_H2D;
+    } else if (_storage->deviceType() != LLAISYS_DEVICE_CPU && device_type == LLAISYS_DEVICE_CPU) {
+        kind = LLAISYS_MEMCPY_D2H;
+    } else {
+        kind = LLAISYS_MEMCPY_D2D;
+    }
+    
+    
+    // For device-to-device copy, we need to use the source device's API
+    // The memcpy_sync should be called from the source device context for D2H/D2D
+    core::context().setDevice(_storage->deviceType(), _storage->deviceId());
+    core::context().runtime().api()->memcpy_sync(dst_ptr, src_ptr, num_bytes, kind); 
+    return new_tensor;
 }
 
 } // namespace llaisys
