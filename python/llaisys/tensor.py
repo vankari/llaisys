@@ -106,9 +106,3 @@ class Tensor:
                 self._tensor, llaisysDeviceType_t(device), c_int(device_id)
             )
         )
-    def contiguous(self):
-        return Tensor(
-            tensor=LIB_LLAISYS.tensorContiguous(
-                self._tensor
-            )
-        )

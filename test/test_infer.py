@@ -146,5 +146,5 @@ if __name__ == "__main__":
     '''
     if args.test:
         assert llaisys_tokens == tokens
-        print("\033[92mTest passed!\033[0m\n")
-    '''
+        print("\033[92mTest passed!\033[0m\n")'''
+    

@@ -72,9 +72,7 @@ __C {
         llaisysTensor_t tensor,
         llaisysDeviceType_t device_type,
         int device_id);
-    __export llaisysTensor_t tensorContiguous(
-        llaisysTensor_t tensor);
-        
+    
 }
 
 #endif // LLAISYS_TENSOR_H

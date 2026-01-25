@@ -274,61 +274,10 @@ void Tensor::load(const void *src_) {
 
 
 tensor_t Tensor::contiguous() const {
-    if (this->isContiguous()) {
-        return std::shared_ptr<Tensor>(new Tensor(_meta, _storage, _offset));
-    }
-    
-    auto new_tensor = Tensor::create(_meta.shape, _meta.dtype, deviceType(), deviceId());
-    
-    size_t total_elems = this->numel();
-    size_t elem_size = this->elementSize();
-    
-    if (deviceType() == LLAISYS_DEVICE_CPU) {
-        // CPU: 使用多维索引遍历
-        const std::byte* src_ptr = this->data();
-        std::byte* dst_ptr = new_tensor->data();
-        
-        std::vector<size_t> indices(shape().size(), 0);
-        
-        for (size_t flat_idx = 0; flat_idx < total_elems; flat_idx++) {
-            // 计算源地址（使用 strides）
-            size_t src_offset = 0;
-            for (size_t i = 0; i < indices.size(); i++) {
-                src_offset += indices[i] * strides()[i];
-            }
-            
-            // 拷贝一个元素
-            std::memcpy(
-                dst_ptr + flat_idx * elem_size,
-                src_ptr + src_offset * elem_size,
-                elem_size
-            );
-            
-            // 更新多维索引（类似进位）
-            for (int i = indices.size() - 1; i >= 0; i--) {
-                indices[i]++;
-                if (indices[i] < shape()[i]) {
-                    break;
-                }
-                indices[i] = 0;
-            }
-        }
-    } else {
-        // GPU: 通过 CPU 中转
-        auto cpu_src = this->to(LLAISYS_DEVICE_CPU, 0);
-        auto cpu_contiguous = cpu_src->contiguous();
-        
-        core::context().setDevice(deviceType(), deviceId());
-        core::context().runtime().api()->memcpy_sync(
-            new_tensor->data(),
-            cpu_contiguous->data(),
-            total_elems * elem_size,
-            LLAISYS_MEMCPY_H2D
-        );
-    }
-    
-    return new_tensor;
+    TO_BE_IMPLEMENTED();
+    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage, this->_offset));
 }
+
 tensor_t Tensor::reshape(const std::vector<size_t> &shape) const {
     // Check contiguous and shape compatibility
     if (!this->isContiguous()) {
@@ -356,7 +305,7 @@ tensor_t Tensor::reshape(const std::vector<size_t> &shape) const {
     return std::shared_ptr<Tensor>(new Tensor(new_meta, _storage, this->_offset));
 }
 
-tensor_t Tensor::to(llaisysDeviceType_t device_type, int device) const {
+tensor_t Tensor::to(llaisysDeviceType_t device_type, int device) const {  
     // If already on the target device, return a copy (or the same tensor)
     if (_storage->deviceType() == device_type && (device == -1 || _storage->deviceId() == device)) {
         return std::shared_ptr<Tensor>(new Tensor(_meta, _storage, this->_offset));
