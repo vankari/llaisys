@@ -51,7 +51,6 @@ class LlaisysQwen2Model(ctypes.Structure):
 
 # Load shared library
 def load_qwen2(lib):
-    # Declare API function prototypes
     lib.llaisysQwen2ModelCreate.argtypes = [ctypes.POINTER(LlaisysQwen2Meta), llaisysDeviceType_t, ctypes.POINTER(c_int), c_int]
     lib.llaisysQwen2ModelCreate.restype = ctypes.POINTER(LlaisysQwen2Model)
 

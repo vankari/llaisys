@@ -1,6 +1,7 @@
 import gc
 from test_utils import *
-
+import faulthandler
+faulthandler.enable()
 import argparse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
@@ -124,6 +125,7 @@ if __name__ == "__main__":
     '''
     model = load_llaisys_model(model_path, args.device)
     start_time = time.time()
+    '''
     llaisys_tokens, llaisys_output = llaisys_infer(
         args.prompt,
         tokenizer,
@@ -133,7 +135,7 @@ if __name__ == "__main__":
         top_k=top_k,
         temperature=temperature,
     )
-
+    
     end_time = time.time()
 
     print("\n=== Your Result ===\n")
@@ -142,7 +144,7 @@ if __name__ == "__main__":
     print("\nContents:")
     print(llaisys_output)
     print("\n")
-    print(f"Time elapsed: {(end_time - start_time):.2f}s\n")
+    print(f"Time elapsed: {(end_time - start_time):.2f}s\n")'''
     '''
     if args.test:
         assert llaisys_tokens == tokens

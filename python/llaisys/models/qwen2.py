@@ -57,7 +57,9 @@ class Qwen2:
         self.data_type = DataType.F32 if device == DeviceType.CPU else DataType.BF16
         
         self._create_model()
+        
         self._load_weights()
+        
 
     def _resolve_model_path(self, model_path: Optional[Union[str, Path]]) -> Path:
         """Resolve model path, downloading if necessary."""
@@ -155,10 +157,11 @@ class Qwen2:
         
         for file in sorted(self.model_path.glob("*.safetensors")):
             data = safetensors.safe_open(file, framework="torch", device="cpu")
-            self._load_embedding_layers(data, weights, maybe_cast_tensor)
-            self._load_attention_layers(data, weights, maybe_cast_tensor)
+            '''self._load_embedding_layers(data, weights, maybe_cast_tensor)
+            self._load_attention_layers(data, weights, maybe_cast_tensor)'''
             self._load_mlp_layers(data, weights, maybe_cast_tensor)
-
+        
+    
     def _load_embedding_layers(self, data, weights, cast_fn):
         """Load embedding and output layers."""
         embedding_mappings = [
