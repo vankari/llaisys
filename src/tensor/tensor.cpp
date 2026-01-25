@@ -176,7 +176,7 @@ bool Tensor::isContiguous() const {
             expected_stride *= shape[j];    
         }    
           
-        if (strides[i] != expected_stride) {    
+        if (static_cast<size_t>(strides[i]) != expected_stride) {    
             return false;    
         }    
     }    
