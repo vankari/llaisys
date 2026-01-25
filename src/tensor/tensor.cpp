@@ -233,7 +233,7 @@ tensor_t Tensor::view(const std::vector<size_t> &shape) const {
     std::vector<ptrdiff_t> new_strides(shape.size());  
     new_strides[shape.size() - 1] = 1;  
       
-    for (size_t i = shape.size() - 2; i >= 0; --i) {  
+    for (int i = static_cast<int> (shape.size()) - 2; i >= 0; --i) {  
         new_strides[i] = new_strides[i + 1] * shape[i + 1];  
     }  
       
