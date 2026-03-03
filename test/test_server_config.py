@@ -29,3 +29,8 @@ def test_model_path_fallbacks_to_hf_when_path_missing(monkeypatch):
     config_module = _load_server_config_module()
     config = config_module.ServerConfig()
     assert config.model_path is None
+
+if __name__ == "__main__":
+    test_model_path_uses_existing_local_path()
+    test_model_path_fallbacks_to_hf_when_path_missing()
+    print("\033[92mConfig tests passed!\033[0m\n")

@@ -40,8 +40,8 @@ def _collect_stream_reply(chunks):
     return "".join(parts)
 
 
-def test_healthz():
-    app_module = _load_app_with_real_engine()
+def test_healthz(app_module=None):
+    
     client = TestClient(app_module.app)
 
     resp = client.get("/healthz")
@@ -52,8 +52,16 @@ def test_healthz():
     assert "model" in body
 
 
-def test_chat_completion_non_stream():
-    app_module = _load_app_with_real_engine()
+def test_ui_index(app_module=None):
+    client = TestClient(app_module.app)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "LLAISYS Chat UI" in resp.text
+
+
+def test_chat_completion_non_stream(app_module=None):
+    
     client = TestClient(app_module.app)
 
     payload = {
@@ -78,8 +86,7 @@ def test_chat_completion_non_stream():
     assert body["usage"]["total_tokens"] == body["usage"]["prompt_tokens"] + body["usage"]["completion_tokens"]
 
 
-def test_chat_completion_stream():
-    app_module = _load_app_with_real_engine()
+def test_chat_completion_stream(app_module=None):
     client = TestClient(app_module.app)
 
     payload = {
@@ -104,7 +111,7 @@ def test_chat_completion_stream():
     assert isinstance(stream_reply, str)
 
 
-def test_chat_completion_empty_messages():
+def test_chat_completion_empty_messages(app_module=None):
     app_module = _load_app_with_real_engine()
     client = TestClient(app_module.app)
 
@@ -119,8 +126,10 @@ def test_chat_completion_empty_messages():
 
 
 if __name__ == "__main__":
-    test_healthz()
-    test_chat_completion_non_stream()
-    test_chat_completion_stream()
-    test_chat_completion_empty_messages()
+    app_module = _load_app_with_real_engine()
+    test_healthz(app_module)
+    test_ui_index(app_module)
+    test_chat_completion_non_stream(app_module)
+    test_chat_completion_stream(app_module)
+    test_chat_completion_empty_messages(app_module)
     print("\033[92mTest passed!\033[0m\n")

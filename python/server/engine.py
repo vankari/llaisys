@@ -1,6 +1,6 @@
 import threading
 import time
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Iterator
 
 from transformers import AutoTokenizer
 import llaisys
@@ -48,6 +48,32 @@ class ChatEngine:
             "completion_text": completion_text,
             "created": int(time.time()),
         }
+
+    def stream_generate(self, messages: List[Dict[str, str]], max_tokens: int, top_k: int, top_p: float, temperature: float, use_cache: bool) -> Iterator[int]:
+        prompt = self._build_prompt(messages)
+        input_ids = self._tokenizer.encode(prompt)
+        generated = list(input_ids)
+
+        with self._lock:
+            for _ in range(max_tokens):
+                output_ids = self._model.generate(
+                    generated,
+                    max_new_tokens=1,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    use_cache=use_cache,
+                )
+
+                if len(output_ids) <= len(generated):
+                    break
+
+                token_id = output_ids[len(generated)]
+                generated = output_ids
+                yield token_id
+
+                if token_id == self._model.eos_token_id:
+                    break
 
 
 ENGINE = ChatEngine()

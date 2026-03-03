@@ -85,7 +85,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cpu", choices=["cpu", "nvidia"], type=str)
     parser.add_argument("--model", default="/home/vankari/code/DeepSeek-R1-Distill-Qwen-1.5B/", type=str)
     parser.add_argument("--prompt", default="Who are you?", type=str)
-    parser.add_argument("--max_steps", default=10, type=int)
+    parser.add_argument("--max_steps", default=64, type=int)
     parser.add_argument("--top_p", default=0.8, type=float)
     parser.add_argument("--top_k", default=50, type=int)
     parser.add_argument("--temperature", default=1.0, type=float)

@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLAISYS Chat UI</title>
+    <style>
+      :root {
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f5f6f8;
+        color: #111827;
+      }
+      .container {
+        max-width: 900px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+      .header {
+        padding: 16px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .title {
+        margin: 0;
+        font-size: 18px;
+      }
+      .chat {
+        height: 60vh;
+        overflow-y: auto;
+        padding: 16px;
+      }
+      .msg {
+        margin-bottom: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+      .role {
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .user .role {
+        color: #2563eb;
+      }
+      .assistant .role {
+        color: #059669;
+      }
+      .composer {
+        padding: 16px;
+        border-top: 1px solid #e5e7eb;
+      }
+      textarea {
+        width: 100%;
+        min-height: 88px;
+        resize: vertical;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      .actions {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .switch {
+        margin-left: auto;
+        font-size: 13px;
+        color: #374151;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      button {
+        border: 1px solid #d1d5db;
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #111827;
+        color: #ffffff;
+        border-color: #111827;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .status {
+        font-size: 13px;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <div class="header">
+          <h1 class="title">LLAISYS Chat</h1>
+          <div id="status" class="status">就绪</div>
+        </div>
+        <div id="chat" class="chat"></div>
+        <div class="composer">
+          <textarea id="input" placeholder="输入问题，按 Ctrl+Enter 发送"></textarea>
+          <div class="actions">
+            <button id="send" class="primary">发送</button>
+            <button id="clear">清空对话</button>
+            <label class="switch">
+              <input id="stream-toggle" type="checkbox" checked />
+              流式显示
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const chatEl = document.getElementById('chat');
+      const inputEl = document.getElementById('input');
+      const sendBtn = document.getElementById('send');
+      const clearBtn = document.getElementById('clear');
+      const statusEl = document.getElementById('status');
+      const streamToggleEl = document.getElementById('stream-toggle');
+
+      const messages = [];
+      let pending = false;
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function addMessage(role, content) {
+        const wrapper = document.createElement('div');
+        wrapper.className = `msg ${role}`;
+
+        const roleEl = document.createElement('div');
+        roleEl.className = 'role';
+        roleEl.textContent = role === 'user' ? '你' : '助手';
+
+        const contentEl = document.createElement('div');
+        contentEl.textContent = content;
+
+        wrapper.appendChild(roleEl);
+        wrapper.appendChild(contentEl);
+        chatEl.appendChild(wrapper);
+        chatEl.scrollTop = chatEl.scrollHeight;
+
+        return contentEl;
+      }
+
+      async function readStreamingReply(resp, contentEl) {
+        if (!resp.body) {
+          throw new Error('流式响应不可读');
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let reply = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+
+          for (const eventText of events) {
+            const lines = eventText.split('\n');
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) {
+                continue;
+              }
+              const payload = line.slice(6);
+              if (payload === '[DONE]') {
+                continue;
+              }
+
+              let item;
+              try {
+                item = JSON.parse(payload);
+              } catch {
+                continue;
+              }
+
+              const piece = item.choices?.[0]?.delta?.content || '';
+              if (piece) {
+                reply += piece;
+                contentEl.textContent = reply;
+                chatEl.scrollTop = chatEl.scrollHeight;
+              }
+            }
+          }
+        }
+
+        return reply;
+      }
+
+      async function sendMessage() {
+        if (pending) return;
+        const text = inputEl.value.trim();
+        if (!text) return;
+
+        messages.push({ role: 'user', content: text });
+        addMessage('user', text);
+        inputEl.value = '';
+
+        pending = true;
+        sendBtn.disabled = true;
+        clearBtn.disabled = true;
+        streamToggleEl.disabled = true;
+        setStatus('生成中...');
+
+        try {
+          const useStream = streamToggleEl.checked;
+          const resp = await fetch('/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages,
+              stream: useStream
+            })
+          });
+
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+
+          const assistantContentEl = addMessage('assistant', '');
+          let reply = '';
+
+          if (useStream) {
+            reply = await readStreamingReply(resp, assistantContentEl);
+          } else {
+            const data = await resp.json();
+            reply = data.choices?.[0]?.message?.content ?? '';
+            assistantContentEl.textContent = reply;
+          }
+
+          messages.push({ role: 'assistant', content: reply });
+          setStatus('就绪');
+        } catch (err) {
+          addMessage('assistant', `请求失败：${err.message}`);
+          setStatus('请求失败');
+        } finally {
+          pending = false;
+          sendBtn.disabled = false;
+          clearBtn.disabled = false;
+          streamToggleEl.disabled = false;
+        }
+      }
+
+      sendBtn.addEventListener('click', sendMessage);
+      clearBtn.addEventListener('click', () => {
+        messages.length = 0;
+        chatEl.innerHTML = '';
+        setStatus('已清空');
+      });
+      inputEl.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && event.ctrlKey) {
+          event.preventDefault();
+          sendMessage();
+        }
+      });
+    </script>
+  </body>
+</html>

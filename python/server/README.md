@@ -15,6 +15,12 @@ cd python
 uvicorn server.app:app --host 0.0.0.0 --port 8000
 ```
 
+Open chat UI:
+
+```bash
+http://127.0.0.1:8000/
+```
+
 Optional environment variables:
 
 - `LLAISYS_MODEL_PATH`: local model path (default: `/home/vankari/code/DeepSeek-R1-Distill-Qwen-1.5B/`; if path does not exist, falls back to HF model)
