@@ -239,6 +239,12 @@ class Qwen2:
             raise ValueError("Input tokens cannot be empty")
         if max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive")
+        if temperature <= 0:
+            raise ValueError("temperature must be positive")
+        if top_k == 0:
+            raise ValueError("top_k cannot be 0")
+        if top_p < 0 or top_p > 1:
+            raise ValueError("top_p must be in [0, 1]")
             
         generated = list(inputs)
         
@@ -246,7 +252,7 @@ class Qwen2:
         kcache_array, vcache_array = self._create_kv_cache(max_new_tokens, len(generated), use_cache)
         
         # Prefill phase
-        next_token = self._infer_tokens(generated, kcache_array, vcache_array, 0)
+        next_token = self._infer_tokens(generated, kcache_array, vcache_array, 0, temperature, top_k, top_p)
         generated.append(next_token)
         
         # Decode phase  
@@ -255,9 +261,11 @@ class Qwen2:
                 break
                 
             if use_cache:
-                next_token = self._infer_tokens([next_token], kcache_array, vcache_array, len(generated) - 1)
+                next_token = self._infer_tokens([next_token], kcache_array, vcache_array, len(generated) - 1,
+                                                temperature, top_k, top_p)
             else:
-                next_token = self._infer_tokens(generated, kcache_array, vcache_array, 0)
+                next_token = self._infer_tokens(generated, kcache_array, vcache_array, 0,
+                                                temperature, top_k, top_p)
                 
             generated.append(next_token)
 
@@ -283,7 +291,8 @@ class Qwen2:
             
         return kcache_array, vcache_array
 
-    def _infer_tokens(self, tokens: Sequence[int], kcache_array, vcache_array, past_len: int) -> int:
+    def _infer_tokens(self, tokens: Sequence[int], kcache_array, vcache_array,
+                      past_len: int, temperature: float, top_k: int, top_p: float) -> int:
         """Perform inference on token sequence."""
         ntokens = len(tokens)
         TokenArrayType = ctypes.c_int64 * ntokens
@@ -295,5 +304,8 @@ class Qwen2:
             ctypes.c_size_t(ntokens),
             kcache_array,
             vcache_array,
-            ctypes.c_size_t(past_len)
+            ctypes.c_size_t(past_len),
+            ctypes.c_float(temperature),
+            ctypes.c_int(top_k),
+            ctypes.c_float(top_p),
         )
