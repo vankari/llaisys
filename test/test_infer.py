@@ -24,6 +24,8 @@ def load_hf_model(model_path=None, device_name="cpu"):
         print(f"Loading model from Hugging Face: {model_id}")
         model_path = snapshot_download(model_id)
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype=torch.bfloat16,
@@ -42,14 +44,16 @@ def hf_infer(
         add_generation_prompt=True,
         tokenize=False,
     )
-    inputs = tokenizer.encode(input_content, return_tensors="pt").to(model.device)
+    model_inputs = tokenizer(input_content, return_tensors="pt").to(model.device)
     with torch.no_grad():
         outputs = model.generate(
-            inputs,
+            input_ids=model_inputs["input_ids"],
+            attention_mask=model_inputs["attention_mask"],
             max_new_tokens=max_new_tokens,
             top_k=top_k,
             top_p=top_p,
             temperature=temperature,
+            pad_token_id=tokenizer.pad_token_id,
         )
     result = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return outputs[0].tolist(), result
