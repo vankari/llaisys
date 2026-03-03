@@ -61,10 +61,10 @@ jobs:
         python test/test_infer.py --test
     
     - name: project3-1
-     run: |
-      python test/ops/random_sample.py
+      run: |
+        python test/ops/random_sample.py
     - name: project3-2
-     run: |
-      python test/server_config.py
-      python test/server.py
+      run: |
+        python test/server_config.py
+        python test/server.py
       
