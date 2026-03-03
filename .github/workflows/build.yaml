@@ -65,6 +65,6 @@ jobs:
         python test/ops/random_sample.py
     - name: project3-2
       run: |
-        python test/server_config.py
-        python test/server.py
+        python test/test_server_config.py
+        python test/test_server.py
       
