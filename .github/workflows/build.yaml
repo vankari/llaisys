@@ -33,7 +33,8 @@ jobs:
     - name: Install Python
       run: | 
         cd python
-        pip install .
+        pip install ./llaisyscore/
+        pip install ./server-project/
         cd ..
 
     - name: Assignment-0
@@ -58,3 +59,12 @@ jobs:
     - name: Assignment-3
       run: |
         python test/test_infer.py --test
+    
+    - name: project3-1
+     run: |
+      python test/ops/random_sample.py
+    - name: project3-2
+     run: |
+      python test/server_config.py
+      python test/server.py
+      
