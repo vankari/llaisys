@@ -1,5 +1,4 @@
 import json
-import re
 import time
 import uuid
 from pathlib import Path
@@ -50,15 +49,6 @@ def _chunk_payload(chunk_id: str, model_name: str, content: str, finish_reason=N
     }
 
 
-def _sanitize_completion_text(text: str) -> str:
-    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    cleaned = cleaned.replace("<think>", "").replace("</think>", "")
-    cleaned = cleaned.strip()
-    if cleaned:
-        return cleaned
-    return text.strip()
-
-
 def _stream_completion(req: ChatCompletionRequest, model_name: str) -> Iterator[str]:
     chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
 
@@ -99,7 +89,7 @@ def chat_completions(req: ChatCompletionRequest):
         use_cache=req.use_cache if req.use_cache is not None else CONFIG.default_use_cache,
     )
 
-    completion_text = _sanitize_completion_text(result["completion_text"])
+    completion_text = result["completion_text"].strip()
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     response = ChatCompletionResponse(
