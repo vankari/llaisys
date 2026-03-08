@@ -220,7 +220,10 @@ class Qwen2:
         top_k: int = 1,
         top_p: float = 0.8,
         temperature: float = 0.8,
-        use_cache: bool = True
+        use_cache: bool = True,
+        kcache_array=None,
+        vcache_array=None,
+        past_len: int = 0,
     ) -> Sequence[int]:
         """Generate tokens using the model.
         
@@ -230,7 +233,10 @@ class Qwen2:
             top_k: Top-k sampling parameter
             top_p: Top-p (nucleus) sampling parameter  
             temperature: Sampling temperature
-            use_cache: Whether to use KV cache for efficiency
+            use_cache: Whether to use KV cache for efficiency.
+            kcache_array: External KV cache k tensor array managed outside model.
+            vcache_array: External KV cache v tensor array managed outside model.
+            past_len: Number of valid tokens already written in external KV cache.
             
         Returns:
             Generated token IDs including input tokens
@@ -245,14 +251,35 @@ class Qwen2:
             raise ValueError("top_k cannot be 0")
         if top_p < 0 or top_p > 1:
             raise ValueError("top_p must be in [0, 1]")
+        if past_len < 0:
+            raise ValueError("past_len must be non-negative")
             
         generated = list(inputs)
-        
-        # Create KV cache if enabled
-        kcache_array, vcache_array = self._create_kv_cache(max_new_tokens, len(generated), use_cache)
-        
+
+        use_external_cache = bool(use_cache and kcache_array is not None and vcache_array is not None)
+        null_cache = ctypes.POINTER(llaisysTensor_t)()
+        active_kcache = kcache_array if use_external_cache else null_cache
+        active_vcache = vcache_array if use_external_cache else null_cache
+
+        if use_external_cache and past_len > len(generated):
+            raise ValueError(
+                f"past_len={past_len} cannot exceed input length={len(generated)} for the current call"
+            )
+
+        prefill_tokens = generated
+        prefill_past_len = 0
+        cached_token_len = 0
+        if use_external_cache:
+            prefill_tokens = generated[past_len:]
+            prefill_past_len = past_len
+            if len(prefill_tokens) == 0:
+                prefill_tokens = [generated[-1]]
+                prefill_past_len = len(generated) - 1
+            cached_token_len = prefill_past_len + len(prefill_tokens)
+
         # Prefill phase
-        next_token = self._infer_tokens(generated, kcache_array, vcache_array, 0, temperature, top_k, top_p)
+        next_token = self._infer_tokens(prefill_tokens, active_kcache, active_vcache,
+                                        prefill_past_len, temperature, top_k, top_p)
         generated.append(next_token)
         
         # Decode phase  
@@ -260,36 +287,17 @@ class Qwen2:
             if next_token == self.eos_token_id:
                 break
                 
-            if use_cache:
-                next_token = self._infer_tokens([next_token], kcache_array, vcache_array, len(generated) - 1,
+            if use_external_cache:
+                next_token = self._infer_tokens([next_token], active_kcache, active_vcache, cached_token_len,
                                                 temperature, top_k, top_p)
+                cached_token_len += 1
             else:
-                next_token = self._infer_tokens(generated, kcache_array, vcache_array, 0,
+                next_token = self._infer_tokens(generated, active_kcache, active_vcache, 0,
                                                 temperature, top_k, top_p)
                 
             generated.append(next_token)
 
         return generated
-
-    def _create_kv_cache(self, max_new_tokens: int, input_len: int, use_cache: bool):
-        """Create KV cache tensors if needed."""
-        if use_cache:
-            kcache_array = (llaisysTensor_t * self.num_hidden_layers)()
-            vcache_array = (llaisysTensor_t * self.num_hidden_layers)()
-
-            for i in range(self.num_hidden_layers):
-                shape_arr = (ctypes.c_size_t * 3)(
-                    max_new_tokens + input_len,
-                    self.num_key_value_heads,
-                    self.per_kvhead_dim
-                )
-                kcache_array[i] = LIB_LLAISYS.tensorCreate(shape_arr, 3, self.data_type, self.device, self.device_id)
-                vcache_array[i] = LIB_LLAISYS.tensorCreate(shape_arr, 3, self.data_type, self.device, self.device_id)
-        else:
-            kcache_array = ctypes.POINTER(llaisysTensor_t)()
-            vcache_array = ctypes.POINTER(llaisysTensor_t)()
-            
-        return kcache_array, vcache_array
 
     def _infer_tokens(self, tokens: Sequence[int], kcache_array, vcache_array,
                       past_len: int, temperature: float, top_k: int, top_p: float) -> int:
