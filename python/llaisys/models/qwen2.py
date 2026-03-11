@@ -228,7 +228,9 @@ class Qwen2:
         """Generate tokens using the model.
         
         Args:
-            inputs: Input token IDs
+            inputs: Input token IDs.
+                - use_cache=True with external cache: incremental input (current request tail).
+                - use_cache=False: full input sequence.
             max_new_tokens: Maximum number of new tokens to generate
             top_k: Top-k sampling parameter
             top_p: Top-p (nucleus) sampling parameter  
@@ -239,7 +241,9 @@ class Qwen2:
             past_len: Number of valid tokens already written in external KV cache.
             
         Returns:
-            Generated token IDs including input tokens
+            Token IDs for current request + current output.
+            - use_cache=True: returns `inputs + new_tokens`.
+            - use_cache=False: returns `inputs[past_len:] + new_tokens`.
         """
         if not inputs:
             raise ValueError("Input tokens cannot be empty")
@@ -255,33 +259,27 @@ class Qwen2:
             raise ValueError("past_len must be non-negative")
             
         generated = list(inputs)
-
         use_external_cache = bool(use_cache and kcache_array is not None and vcache_array is not None)
         null_cache = ctypes.POINTER(llaisysTensor_t)()
         active_kcache = kcache_array if use_external_cache else null_cache
         active_vcache = vcache_array if use_external_cache else null_cache
 
-        if use_external_cache and past_len > len(generated):
+        if not use_external_cache and past_len > len(generated):
             raise ValueError(
                 f"past_len={past_len} cannot exceed input length={len(generated)} for the current call"
             )
 
-        prefill_tokens = generated
-        prefill_past_len = 0
-        cached_token_len = 0
-        if use_external_cache:
-            prefill_tokens = generated[past_len:]
-            prefill_past_len = past_len
-            if len(prefill_tokens) == 0:
-                prefill_tokens = [generated[-1]]
-                prefill_past_len = len(generated) - 1
-            cached_token_len = prefill_past_len + len(prefill_tokens)
+        output = list(generated) if use_external_cache else list(generated[past_len:])
+        cached_token_len = past_len
 
         # Prefill phase
-        next_token = self._infer_tokens(prefill_tokens, active_kcache, active_vcache,
-                                        prefill_past_len, temperature, top_k, top_p)
+        next_token = self._infer_tokens(generated, active_kcache, active_vcache,
+                                        past_len if use_external_cache else 0, temperature, top_k, top_p)
+        output.append(next_token)
         generated.append(next_token)
+        cached_token_len +=len(output)-1
         
+
         # Decode phase  
         for _ in range(max_new_tokens - 1):
             if next_token == self.eos_token_id:
@@ -296,8 +294,9 @@ class Qwen2:
                                                 temperature, top_k, top_p)
                 
             generated.append(next_token)
+            output.append(next_token)
 
-        return generated
+        return output
 
     def _infer_tokens(self, tokens: Sequence[int], kcache_array, vcache_array,
                       past_len: int, temperature: float, top_k: int, top_p: float) -> int:

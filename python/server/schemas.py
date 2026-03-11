@@ -9,6 +9,7 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     model: Optional[str] = None
+    session_id: Optional[str] = None
     messages: List[ChatMessage]
     max_tokens: Optional[int] = Field(default=None, ge=1)
     top_k: Optional[int] = None

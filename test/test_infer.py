@@ -69,17 +69,34 @@ def llaisys_infer(
 ):
     input_content = tokenizer.apply_chat_template(
         conversation=[{"role": "user", "content": prompt}],
-        add_generation_prompt=True,
+        add_generation_prompt= True,
         tokenize=False,
     )
     inputs = tokenizer.encode(input_content)
+
+    if not hasattr(llaisys_infer, "_cache_pools"):
+        llaisys_infer._cache_pools = {}
+
+    model_key = id(model)
+    if model_key not in llaisys_infer._cache_pools:
+        llaisys_infer._cache_pools[model_key] = llaisys.models.KVCachePool(model, max_sessions=1)
+
+    cache_pool = llaisys_infer._cache_pools[model_key]
+    session_id = "test-infer-default-session"
+    slot = cache_pool.prepare_session(session_id, inputs, max_new_tokens)
+
     outputs = model.generate(
         inputs,
         max_new_tokens=max_new_tokens,
         top_k=top_k,
         top_p=top_p,
         temperature=temperature,
+        use_cache=True,
+        kcache_array=slot.kcache_array,
+        vcache_array=slot.vcache_array,
+        past_len=slot.past_len,
     )
+    cache_pool.commit_session(session_id, outputs)
 
     return outputs, tokenizer.decode(outputs, skip_special_tokens=True)
 
@@ -116,9 +133,9 @@ if __name__ == "__main__":
     )
     end_time = time.time()
     
-    del model
+    del model 
     gc.collect()
-    
+   
     print("\n=== Answer ===\n")
     print("Tokens:")
     print(tokens)

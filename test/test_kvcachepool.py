@@ -91,8 +91,38 @@ def test_reset_and_clear():
     assert pool.find_best_prefix([1, 3]) is None
 
 
+def test_modify_history_then_commit():
+    model = _DummyModel()
+    pool = KVCachePool(model, max_sessions=4)
+    try:
+        s1 = pool.prepare_session("s1", [1, 2, 3], max_new_tokens=8)
+        s2 = pool.prepare_session("s2", [1, 7, 8], max_new_tokens=8)
+        _zero_init_slot(s1, model)
+        _zero_init_slot(s2, model)
+
+        pool.commit_session("s1", [1, 2, 3, 4])
+        pool.commit_session("s2", [1, 7, 8, 9])
+
+        slot = pool.modify_session_tokens("s1", [1, 2, 8])
+        assert slot.past_len == 2
+
+        best_after_modify = pool.find_best_prefix([1, 2, 3, 99])
+        assert best_after_modify is not None
+        assert best_after_modify.session_id == "s1"
+        assert best_after_modify.matched_tokens == 2
+
+        pool.commit_session("s1", [1, 2, 8, 10])
+        best_after_commit = pool.find_best_prefix([1, 2, 8, 11])
+        assert best_after_commit is not None
+        assert best_after_commit.session_id == "s1"
+        assert best_after_commit.matched_tokens == 3
+    finally:
+        pool.clear()
+
+
 if __name__ == "__main__":
     test_prepare_and_commit_session()
     test_find_best_prefix_with_trie()
     test_reset_and_clear()
+    test_modify_history_then_commit()
     print("\033[92mTest passed!\033[0m\n")

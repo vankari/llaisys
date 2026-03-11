@@ -63,8 +63,14 @@ jobs:
     - name: project3-1
       run: |
         python test/ops/random_sample.py
+
     - name: project3-2
       run: |
         python test/test_server_config.py
+        
+    - name: project3-3
+      run: |
+        python test/test_kvcachepool.py
+        python test/test_inference_backend.py
         python test/test_server.py
       

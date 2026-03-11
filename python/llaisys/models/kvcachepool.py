@@ -5,7 +5,8 @@ from collections import OrderedDict
 from typing import Dict, Optional, Sequence
 import ctypes
 
-from ..libllaisys import LIB_LLAISYS, llaisysTensor_t
+from ..libllaisys import LIB_LLAISYS, llaisysTensor_t, DeviceType, DataType, MemcpyKind
+from ..runtime import RuntimeAPI
 
 
 @dataclass
@@ -81,6 +82,7 @@ class KVCachePool:
         self._session_to_index: dict[str, int] = {}
         self._index_to_session: dict[int, str] = {}
         self._active_indices: set[int] = set()
+        self._runtime = RuntimeAPI(self._model.device)
 
     @staticmethod
     def _common_prefix_len(a: Sequence[int], b: Sequence[int]) -> int:
@@ -98,6 +100,54 @@ class KVCachePool:
                 LIB_LLAISYS.tensorDestroy(slot.kcache_array[i])
             if slot.vcache_array[i]:
                 LIB_LLAISYS.tensorDestroy(slot.vcache_array[i])
+
+    @staticmethod
+    def _dtype_nbytes(dtype: DataType) -> int:
+        if dtype in (DataType.BYTE, DataType.BOOL, DataType.I8, DataType.U8):
+            return 1
+        if dtype in (DataType.I16, DataType.U16, DataType.F16, DataType.BF16):
+            return 2
+        if dtype in (DataType.I32, DataType.U32, DataType.F32):
+            return 4
+        if dtype in (DataType.I64, DataType.U64, DataType.F64):
+            return 8
+        raise ValueError(f"unsupported dtype for KV cache copy: {dtype}")
+
+    def _copy_prefix_cache(self, src_slot: KVCacheSlot, dst_slot: KVCacheSlot, prefix_len: int) -> None:
+        if prefix_len <= 0:
+            return
+
+        nbytes = (
+            prefix_len
+            * self._model.num_key_value_heads
+            * self._model.per_kvhead_dim
+            * self._dtype_nbytes(self._model.data_type)
+        )
+        memcpy_kind = MemcpyKind.H2H if self._model.device == DeviceType.CPU else MemcpyKind.D2D
+
+        for i in range(self._model.num_hidden_layers):
+            src_k = LIB_LLAISYS.tensorSlice(src_slot.kcache_array[i], 0, 0, prefix_len)
+            dst_k = LIB_LLAISYS.tensorSlice(dst_slot.kcache_array[i], 0, 0, prefix_len)
+            src_v = LIB_LLAISYS.tensorSlice(src_slot.vcache_array[i], 0, 0, prefix_len)
+            dst_v = LIB_LLAISYS.tensorSlice(dst_slot.vcache_array[i], 0, 0, prefix_len)
+            try:
+                self._runtime.memcpy_sync(
+                    LIB_LLAISYS.tensorGetData(dst_k),
+                    LIB_LLAISYS.tensorGetData(src_k),
+                    nbytes,
+                    memcpy_kind,
+                )
+                self._runtime.memcpy_sync(
+                    LIB_LLAISYS.tensorGetData(dst_v),
+                    LIB_LLAISYS.tensorGetData(src_v),
+                    nbytes,
+                    memcpy_kind,
+                )
+            finally:
+                LIB_LLAISYS.tensorDestroy(src_k)
+                LIB_LLAISYS.tensorDestroy(dst_k)
+                LIB_LLAISYS.tensorDestroy(src_v)
+                LIB_LLAISYS.tensorDestroy(dst_v)
 
     def _get_or_create_session_index(self, session_id: str) -> int:
         """Get stable integer index for a session id."""
@@ -149,6 +199,35 @@ class KVCachePool:
 
         for _, _, child in stack:
             self._remove_session_index(child, session_index)
+
+        for parent, token, child in reversed(stack):
+            if child.children or child.session_indices:
+                break
+            del parent.children[token]
+
+    def _trie_remove_from_depth(self, tokens: Sequence[int], session_index: int, keep_depth: int) -> None:
+        """Remove session index from trie nodes after `keep_depth` on one token path.
+
+        Args:
+            tokens: Existing cached token path.
+            session_index: Target session index.
+            keep_depth: Number of leading nodes to keep unchanged.
+        """
+        if not tokens:
+            return
+
+        stack: list[tuple[_TrieNode, int, _TrieNode]] = []
+        node = self._trie_root
+        for token in tokens:
+            child = node.children.get(token)
+            if child is None:
+                return
+            stack.append((node, token, child))
+            node = child
+
+        for depth, (_, _, child) in enumerate(stack, start=1):
+            if depth > keep_depth:
+                self._remove_session_index(child, session_index)
 
         for parent, token, child in reversed(stack):
             if child.children or child.session_indices:
@@ -207,6 +286,29 @@ class KVCachePool:
         if slot.past_len > 0:
             self._trie_insert(slot.tokens[:slot.past_len], session_index)
 
+    def _set_slot_reuse_state(self, session_id: str, new_tokens: Sequence[int], reusable_len: int) -> KVCacheSlot:
+        slot = self._slots.get(session_id)
+        if slot is None:
+            raise KeyError(f"session not found: {session_id}")
+
+        new_tokens = tuple(new_tokens)
+        reusable_len = max(0, min(reusable_len, len(new_tokens)))
+
+        session_index = self._get_or_create_session_index(session_id)
+        self._active_indices.add(session_index)
+
+        old_cached_tokens = slot.tokens[:slot.past_len]
+        if old_cached_tokens:
+            self._trie_remove(old_cached_tokens, session_index)
+
+        slot.tokens = new_tokens
+        slot.past_len = reusable_len
+
+        if reusable_len > 0:
+            self._trie_insert(new_tokens[:reusable_len], session_index)
+
+        return slot
+
     def _evict_if_needed(self) -> None:
         """Evict least-recently-used sessions when exceeding pool capacity."""
         while len(self._slots) > self._max_sessions:
@@ -264,9 +366,9 @@ class KVCachePool:
     def prepare_session(self, session_id: str, prompt_tokens: Sequence[int], max_new_tokens: int) -> KVCacheSlot:
         """Prepare slot for a new inference call.
 
-        This method ensures slot existence/capacity, computes reusable prefix
-        length against current session history, and returns slot handles for
-        model inference.
+        This method ensures slot existence/capacity, computes best reusable
+        prefix from current session and pool-level matches, and returns slot
+        handles for model inference.
 
         Args:
             session_id: Target session id.
@@ -284,6 +386,7 @@ class KVCachePool:
 
         required_capacity = len(prompt_tokens) + max_new_tokens
         slot = self._slots.get(session_id)
+        existed_before = slot is not None
 
         if slot is None:
             slot = self._allocate_slot(session_id, max(required_capacity, self._model.max_position_embeddings))
@@ -293,18 +396,61 @@ class KVCachePool:
             slot = self._allocate_slot(session_id, max(required_capacity, self._model.max_position_embeddings))
             self._slots[session_id] = slot
 
-        shared = self._common_prefix_len(slot.tokens[:slot.past_len], prompt_tokens)
-        slot.tokens = prompt_tokens
-        slot.past_len = shared
+        self_shared = self._common_prefix_len(slot.tokens[:slot.past_len], prompt_tokens) if existed_before else 0
+
+        pool_match = self.find_best_prefix(prompt_tokens, exclude_session_id=session_id)
+        pool_shared = pool_match.matched_tokens if pool_match is not None else 0
+
+        chosen_shared = self_shared
+        source_slot: Optional[KVCacheSlot] = None
+        if pool_shared > chosen_shared and pool_match is not None:
+            source_slot = self._slots.get(pool_match.session_id)
+            if source_slot is not None:
+                chosen_shared = pool_shared
+
+        slot = self._set_slot_reuse_state(session_id, prompt_tokens, chosen_shared)
+        if source_slot is not None and chosen_shared > 0:
+            self._copy_prefix_cache(source_slot, slot, chosen_shared)
+
+        self._slots.move_to_end(session_id)
+        self._evict_if_needed()
+        return slot
+
+    def modify_session_tokens(self, session_id: str, edited_tokens: Sequence[int]) -> KVCacheSlot:
+        """Apply history edit for one session and invalidate cache suffix.
+
+        The pool keeps trie/session state for common prefix unchanged and drops
+        session index on trie nodes after the first edited position.
+
+        Args:
+            session_id: Target session id.
+            edited_tokens: New full token history after edit.
+
+        Returns:
+            Updated KVCacheSlot whose `past_len` is the reusable cache prefix.
+
+        Raises:
+            KeyError: If target session does not exist.
+        """
+        slot = self._slots.get(session_id)
+        if slot is None:
+            raise KeyError(f"session not found: {session_id}")
+
+        new_tokens = tuple(edited_tokens)
+        old_cached_tokens = slot.tokens[:slot.past_len]
+        keep_len = self._common_prefix_len(old_cached_tokens, new_tokens)
 
         session_index = self._get_or_create_session_index(session_id)
         self._active_indices.add(session_index)
 
-        if shared > 0:
-            self._trie_insert(prompt_tokens[:shared], session_index)
+        if old_cached_tokens:
+            self._trie_remove_from_depth(old_cached_tokens, session_index, keep_len)
+        if keep_len > 0:
+            self._trie_insert(new_tokens[:keep_len], session_index)
 
+        slot.tokens = new_tokens
+        slot.past_len = keep_len
         self._slots.move_to_end(session_id)
-        self._evict_if_needed()
         return slot
 
     def commit_session(self, session_id: str, full_tokens: Sequence[int]) -> None:
