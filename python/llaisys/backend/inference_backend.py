@@ -105,6 +105,23 @@ class InferenceBackend:
             tokenize=False,
         )
 
+    @staticmethod
+    def _normalize_think_for_session(prompt: str, completion_text: str) -> str:
+        if not completion_text:
+            return completion_text
+        prompt_has_think = ("<think>" in prompt) or ("</think>" in prompt)
+        if not prompt_has_think:
+            return completion_text
+
+        has_open = "<think>" in completion_text
+        has_close = "</think>" in completion_text
+        if has_close and not has_open:
+            completion_text = f"<think>{completion_text}"
+            has_open = True
+        if has_open and not has_close:
+            completion_text = f"{completion_text}</think>"
+        return completion_text
+
     def generate(
         self,
         session_id: str,
@@ -168,7 +185,8 @@ class InferenceBackend:
 
             completion_text = self._tokenizer.decode(completion_ids, skip_special_tokens=False)
             if append_assistant_message:
-                state.messages.append({"role": "assistant", "content": completion_text})
+                stored_text = self._normalize_think_for_session(prompt, completion_text)
+                state.messages.append({"role": "assistant", "content": stored_text})
                 state.updated_at = int(time.time())
 
             return {
@@ -283,5 +301,6 @@ class InferenceBackend:
 
             if append_assistant_message:
                 completion_text = self._tokenizer.decode(completion_ids, skip_special_tokens=False)
-                state.messages.append({"role": "assistant", "content": completion_text})
+                stored_text = self._normalize_think_for_session(prompt, completion_text)
+                state.messages.append({"role": "assistant", "content": stored_text})
                 state.updated_at = int(time.time())

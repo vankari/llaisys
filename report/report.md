@@ -1,4 +1,4 @@
-# 本项目基于llaisys实现了一个聊天AI
+# 本项目基于llaisys实现了一个聊天AI（方向3）
 ## 项目依赖（与llaisys保持一致）
 - 编译工具：[Xmake](https://xmake.io/)
 - C++编译器：MSVC（Windows）或Clang或GCC
@@ -22,14 +22,14 @@
     - top_k：按概率排序(t-softmax归一后的输出)后选择最高k个token作为candidate
     - top_p：经过top_k选取后，再对logits进行一次普通softmax，指定一个累积概率的threshold，累积概率低于这个threshold的token选入candidate
     - output：对经过top_p选取后的logits再使用一次普通softmax，得到最后的token分布，按照分布采样的结果的val和idx写入相应张量
-  - 模块测试文件位于test/ops//random_sample.py，主要对random_sample的极端p值（p<=0, p>=1），极端k值（k=1），以及（固定temperature，top_k，top_p组合采样，与pytorch实现进行统计学验证）
+  
 2. 基于llaisys实现 Project #3 聊天服务（FastAPI + Web UI）
-  - 后端入口：`python/server/app.py`
-  - 推理引擎：`python/server/engine.py`
-  - 会话与缓存后端：`python/llaisys/backend/inference_backend.py`
-  - KV-Cache池：`python/llaisys/models/kvcachepool.py`
+    - 后端入口：`python/server/app.py`
+    - 推理引擎：`python/server/engine.py`
+    - 会话与缓存后端：`python/llaisys/backend/inference_backend.py`
+    - KV-Cache池：`python/llaisys/models/kvcachepool.py`
 
-### project3 核心实现说明
+## project3 核心实现说明
 1. OpenAI风格 chat-completion API
   - `POST /v1/chat/completions`：支持非流式与流式（SSE）返回
   - `GET /healthz`：健康检查
@@ -67,15 +67,16 @@
   - 处理`<think>`标签开闭不对称问题
   - 过滤换行符（`\n`）以匹配当前前端展示要求
 
-### 测试与验证
-- 后端会话与流式行为：`test/test_inference_backend.py`
-  - 覆盖会话创建/删除/替换历史
-  - 覆盖流式路径“首步prefill + 后续单token解码”
-- 服务端接口行为：`test/test_server.py`
-  - 覆盖`healthz`、`/`、`/v1/chat/completions`（流式/非流式）
-  - 覆盖`/v1/sessions`增删查
-- 配置行为：`test/test_server_config.py`
-  - 覆盖模型路径环境变量存在/不存在时的分支
+## 测试与验证
+  - 随机采样算子测试文件位于`test/ops/random_sample.py`，主要对random_sample的极端p值（p<=0, p>=1），极端k值（k=1），以及（固定temperature，top_k，top_p组合采样，与pytorch实现进行容差校验）
+  - 后端会话与流式行为：`test/test_inference_backend.py`
+    - 覆盖会话创建/删除/替换历史
+    - 覆盖流式路径“首步prefill + 后续单token解码”
+  - 服务端接口行为：`test/test_server.py`
+    - 覆盖`healthz`、`/`、`/v1/chat/completions`（流式/非流式）
+    - 覆盖`/v1/sessions`增删查
+  - 配置行为：`test/test_server_config.py`
+    - 覆盖模型路径环境变量存在/不存在时的分支
 
 ## 演示效果
 1. 启动服务
@@ -83,39 +84,59 @@
   cd ./python
   python3 -m uvicorn server.app:app --host 0.0.0.0 --port {port}
   ```
+2. 按下面的调用示例或者直接在webgui进行交互
+  - 非流式调用示例
+    ```bash
+    curl -X POST http://127.0.0.1:{port}/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -d '{
+      "messages": [{"role": "user", "content": "你好，介绍一下你自己"}],
+      "stream": false,
+      "max_tokens": 64
+      }'
+    ```
 
-2. 非流式调用示例
-  ```bash
-  curl -X POST http://127.0.0.1:{port}/v1/chat/completions \
+  - 流式调用示例（SSE）
+    ```bash
+    curl -N -X POST http://127.0.0.1:{port}/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -d '{
+      "messages": [{"role": "user", "content": "讲个笑话"}],
+      "stream": true
+      }'
+    ```
+
+  - 会话接口示例
+    ```bash
+    # 创建会话
+    curl -X POST http://127.0.0.1:{port}/v1/sessions -H "Content-Type: application/json" -d '{"session_id":"demo-session"}'
+    # 查询会话列表
+    curl http://127.0.0.1:{port}/v1/sessions
+    # 删除会话
+    curl -X DELETE http://127.0.0.1:{port}/v1/sessions/demo-session
+    # 非流式 chat-completions（指定 session_id）
+    curl -X POST http://127.0.0.1:8000/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
-     "messages": [{"role": "user", "content": "你好，介绍一下你自己"}],
-     "stream": false,
-     "max_tokens": 64
+    "session_id":"{session_id }",
+    "messages":[{"role":"user","content":"你好，介绍一下你自己"}],
+    "stream":false,
+    "max_tokens":64
     }'
-  ```
-
-3. 流式调用示例（SSE）
-  ```bash
-  curl -N -X POST http://127.0.0.1:{port}/v1/chat/completions \
+    # 流式 chat-completions（指定 session_id）
+    curl -N -X POST http://127.0.0.1:8000/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
-     "messages": [{"role": "user", "content": "讲个笑话"}],
-     "stream": true
+    "session_id":"demo-session-001",
+    "messages":[{"role":"user","content":"讲个笑话"}],
+    "stream":true,
+    "max_tokens":64
     }'
-  ```
+    ```
+3. webui展示
+  ![fig](image.png)
 
-4. 会话接口示例
-  ```bash
-  # 创建会话
-  curl -X POST http://127.0.0.1:{port}/v1/sessions -H "Content-Type: application/json" -d '{"session_id":"demo-session"}'
-  # 查询会话列表
-  curl http://127.0.0.1:{port}/v1/sessions
-  # 删除会话
-  curl -X DELETE http://127.0.0.1:{port}/v1/sessions/demo-session
-  ```
-
-## 已知说明
+## 说明
 - 当前项目3实现聚焦“单实例可用聊天服务 + 会话管理 + KV缓存复用 + 流式输出”。未实现多用户管理及连续批处理等功能。
 ## todo
 - 增加cuda支持

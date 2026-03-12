@@ -163,6 +163,11 @@ def test_session_apis_and_session_chat(app_module=None):
     assert chat_resp.status_code == 200
     assert chat_resp.json()["object"] == "chat.completion"
 
+    session_resp = client.get(f"/v1/sessions/{session_id}")
+    assert session_resp.status_code == 200
+    session_messages = session_resp.json().get("messages", [])
+    assert any(item.get("role") == "assistant" for item in session_messages)
+
     delete_resp = client.delete(f"/v1/sessions/{session_id}")
     assert delete_resp.status_code == 200
     assert delete_resp.json()["deleted"] == session_id

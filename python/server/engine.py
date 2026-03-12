@@ -47,7 +47,7 @@ class ChatEngine:
                 top_p=top_p,
                 temperature=temperature,
                 use_cache=use_cache,
-                append_assistant_message=False,
+                append_assistant_message=True,
             )
 
         return {
@@ -72,7 +72,7 @@ class ChatEngine:
                 top_p=top_p,
                 temperature=temperature,
                 use_cache=use_cache,
-                append_assistant_message=False,
+                append_assistant_message=True,
             ):
                 yield token_id
 
