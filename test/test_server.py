@@ -44,8 +44,8 @@ def _collect_stream_reply(chunks):
 def _print_prompt_debug(app_module, messages, label):
     backend = app_module.ENGINE._backend
     prompt = backend._build_prompt(messages)
-    print(f"[{label} messages repr] {repr(messages)}")
-    print(f"[{label} prompt repr] {repr(prompt)}")
+    print(f"[{label} messages repr] {ascii(messages)}")
+    print(f"[{label} prompt repr] {ascii(prompt)}")
     print(f"[{label} messages has <think>] {any('<think>' in (m.get('content') or '') or '</think>' in (m.get('content') or '') for m in messages)}")
     print(f"[{label} prompt has <think>] {'<think>' in prompt}")
     print(f"[{label} prompt has </think>] {'</think>' in prompt}")
@@ -90,7 +90,7 @@ def test_chat_completion_non_stream(app_module=None):
     assert resp.status_code == 200
 
     body = resp.json()
-    print(f"[non-stream reply] {body['choices'][0]['message']['content']}")
+    print(f"[non-stream reply] {ascii(body['choices'][0]['message']['content'])}")
     assert body["object"] == "chat.completion"
     assert body["choices"][0]["message"]["role"] == "assistant"
     assert isinstance(body["choices"][0]["message"]["content"], str)
@@ -119,7 +119,7 @@ def test_chat_completion_stream(app_module=None):
 
     merged = "".join(chunks)
     stream_reply = _collect_stream_reply(chunks)
-    print(f"[stream reply] {stream_reply}")
+    print(f"[stream reply] {ascii(stream_reply)}")
     assert "chat.completion.chunk" in merged
     assert '"finish_reason": "stop"' in merged
     assert "data: [DONE]" in merged
