@@ -8,7 +8,9 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build (CPU)
+    env:
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -73,4 +75,61 @@ jobs:
         python test/test_kvcachepool.py
         python test/test_inference_backend.py
         python test/test_server.py
+
+  build-cuda:
+    name: Build and test (CUDA)
+    runs-on: [self-hosted, linux, x64, cuda]
+    env:
+      TMPDIR: ${{ github.workspace }}/.tmp
+    steps:
+
+    - name: checkout code
+      uses: actions/checkout@v4
+
+    - name: install xmake
+      uses: xmake-io/github-action-setup-xmake@v1
+      with:
+        xmake-version: latest
+
+    - name: prepare tmp
+      run: |
+        mkdir -p "$TMPDIR"
+
+    - name: check cuda toolchain
+      run: |
+        nvidia-smi
+        nvcc --version
+
+    - name: Xmake CUDA Build & Install
+      run: |
+        xmake f --nv-gpu=y -c -v
+        xmake -v
+        xmake install
+
+    - name: Install Python
+      run: |
+        cd python
+        pip install ./llaisyscore/
+        pip install ./server-project/
+        cd ..
+
+    - name: CUDA runtime api test
+      run: |
+        python test/test_runtime.py --device nvidia
+
+    - name: CUDA ops tests
+      run: |
+        python test/ops/add.py --device nvidia
+        python test/ops/argmax.py --device nvidia
+        python test/ops/embedding.py --device nvidia
+        python test/ops/linear.py --device nvidia
+        python test/ops/random_sample.py --device nvidia
+        python test/ops/rms_norm.py --device nvidia
+        python test/ops/rope.py --device nvidia
+        python test/ops/self_attention.py --device nvidia
+        python test/ops/swiglu.py --device nvidia
+
+    - name: CUDA infer test
+      run: |
+        python test/test_infer.py --device nvidia --test
       
