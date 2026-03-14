@@ -8,8 +8,19 @@ on:
 
 jobs:
   build-cuda:
-    name: Build and test (CUDA)
-    runs-on: [self-hosted, linux, x64, cuda]
+    name: Build and test (CUDA, ${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: ubuntu
+            runs_on: '["self-hosted", "linux", "x64", "cuda"]'
+          - target: windows
+            runs_on: '["self-hosted", "windows", "x64", "cuda"]'
+    runs-on: ${{ fromJson(matrix.runs_on) }}
+    defaults:
+      run:
+        shell: bash
     env:
       TMPDIR: ${{ github.workspace }}/.tmp
       PYTHONUTF8: "1"
