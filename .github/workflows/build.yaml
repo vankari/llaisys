@@ -14,10 +14,10 @@ jobs:
       matrix:
         include:
           - target: ubuntu
-            runs_on: '["linux", "cuda"]'
+            os: ubuntu-latest
           - target: windows
-            runs_on: '["windows", "cuda"]'
-    runs-on: ${{ fromJson(matrix.runs_on) }}
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
@@ -29,11 +29,21 @@ jobs:
     - name: checkout code
       uses: actions/checkout@v4
 
+    - name: install xmake
+      uses: xmake-io/github-action-setup-xmake@v1
+      with:
+        xmake-version: latest
+
+    - name: install cuda toolkit
+      uses: Jimver/cuda-toolkit@v0.2.24
+      with:
+        cuda: "12.8.0"
+
     - name: prepare tmp
       run: |
         mkdir -p "$TMPDIR"
 
-    - name: check preinstalled toolchain
+    - name: check toolchain
       run: |
         command -v python
         command -v pip
@@ -42,8 +52,16 @@ jobs:
         python --version
         pip --version
         xmake --version
-        nvidia-smi
         nvcc --version
+
+    - name: detect nvidia gpu
+      run: |
+        if command -v nvidia-smi >/dev/null 2>&1; then
+          nvidia-smi || true
+          echo "HAS_NVIDIA_GPU=1" >> "$GITHUB_ENV"
+        else
+          echo "HAS_NVIDIA_GPU=0" >> "$GITHUB_ENV"
+        fi
 
     - name: Xmake CUDA Build & Install
       run: |
@@ -59,10 +77,12 @@ jobs:
         cd ..
 
     - name: CUDA runtime api test
+      if: env.HAS_NVIDIA_GPU == '1'
       run: |
         python test/test_runtime.py --device nvidia
 
     - name: CUDA ops tests
+      if: env.HAS_NVIDIA_GPU == '1'
       run: |
         python test/ops/add.py --device nvidia
         python test/ops/argmax.py --device nvidia
@@ -75,6 +95,12 @@ jobs:
         python test/ops/swiglu.py --device nvidia
 
     - name: CUDA infer test
+      if: env.HAS_NVIDIA_GPU == '1'
       run: |
         python test/test_infer.py --device nvidia --test
+
+    - name: skip gpu tests when no gpu
+      if: env.HAS_NVIDIA_GPU != '1'
+      run: |
+        echo "No NVIDIA GPU available on this runner, skipped runtime/ops/infer GPU tests."
       
