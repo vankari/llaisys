@@ -10,7 +10,7 @@
 
 template <typename T>
 void random_sample_(int64_t *sample_idx, T *sample_val, const T *logits, size_t vocab_size, float temperature,
-                    int top_k, float top_p) {
+                    int top_k, float top_p, int64_t seed) {
     if (top_p <= 0.0f) {
         top_k = 1;
     }
@@ -70,9 +70,15 @@ void random_sample_(int64_t *sample_idx, T *sample_val, const T *logits, size_t 
         p /= renorm_sum;
     }
 
-    static thread_local std::mt19937 generator(std::random_device{}());
     std::discrete_distribution<size_t> distribution(candidate_probs.begin(), candidate_probs.end());
-    size_t sampled_local_idx = distribution(generator);
+    size_t sampled_local_idx = 0;
+    if (seed >= 0) {
+        std::mt19937_64 generator(static_cast<uint64_t>(seed));
+        sampled_local_idx = distribution(generator);
+    } else {
+        static thread_local std::mt19937_64 generator(std::random_device{}());
+        sampled_local_idx = distribution(generator);
+    }
     size_t sampled_vocab_idx = sorted_indices[sampled_local_idx];
 
     sample_idx[0] = static_cast<int64_t>(sampled_vocab_idx);
@@ -81,21 +87,21 @@ void random_sample_(int64_t *sample_idx, T *sample_val, const T *logits, size_t 
 
 namespace llaisys::ops::cpu {
 void random_sample(std::byte *sample_idx, std::byte *sample_val, const std::byte *logits, llaisysDataType_t type,
-                   size_t vocab_size, float temperature, int top_k, float top_p) {
+                   size_t vocab_size, float temperature, int top_k, float top_p, int64_t seed) {
     switch (type) {
     case LLAISYS_DTYPE_F32:
         return random_sample_(reinterpret_cast<int64_t *>(sample_idx), reinterpret_cast<float *>(sample_val),
-                              reinterpret_cast<const float *>(logits), vocab_size, temperature, top_k, top_p);
+                              reinterpret_cast<const float *>(logits), vocab_size, temperature, top_k, top_p, seed);
     case LLAISYS_DTYPE_BF16:
         return random_sample_(reinterpret_cast<int64_t *>(sample_idx),
                               reinterpret_cast<llaisys::bf16_t *>(sample_val),
                               reinterpret_cast<const llaisys::bf16_t *>(logits), vocab_size, temperature, top_k,
-                              top_p);
+                              top_p, seed);
     case LLAISYS_DTYPE_F16:
         return random_sample_(reinterpret_cast<int64_t *>(sample_idx),
                               reinterpret_cast<llaisys::fp16_t *>(sample_val),
                               reinterpret_cast<const llaisys::fp16_t *>(logits), vocab_size, temperature, top_k,
-                              top_p);
+                              top_p, seed);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

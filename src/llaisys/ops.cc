@@ -45,7 +45,8 @@ __C {
         llaisys::ops::swiglu(out->tensor, gate->tensor, up->tensor);
     }
     void llaisysRandomSample(llaisysTensor_t sample_idx, llaisysTensor_t sample_val, llaisysTensor_t logits,
-                             float temperature, int top_k, float top_p) {
-        llaisys::ops::random_sample(sample_idx->tensor, sample_val->tensor, logits->tensor, temperature, top_k, top_p);
+                             float temperature, int top_k, float top_p, int64_t seed) {
+        llaisys::ops::random_sample(sample_idx->tensor, sample_val->tensor, logits->tensor, temperature, top_k, top_p,
+                                    seed);
     }
 }

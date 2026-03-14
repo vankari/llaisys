@@ -70,5 +70,6 @@ def load_qwen2(lib):
         ctypes.c_float,
         c_int,
         ctypes.c_float,
+        c_int64,
     ]
     lib.llaisysQwen2ModelInfer.restype = c_int64

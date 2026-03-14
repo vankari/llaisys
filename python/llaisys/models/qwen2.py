@@ -151,7 +151,7 @@ class Qwen2:
             if self.device == DeviceType.CPU:
                 return tensor.to(torch.float32).contiguous()
             elif self.device == DeviceType.NVIDIA:
-                return tensor.to(torch.bfloat16).contiguous().cuda()
+                return tensor.to(torch.bfloat16).contiguous()
             return tensor
         
         
@@ -224,6 +224,7 @@ class Qwen2:
         kcache_array=None,
         vcache_array=None,
         past_len: int = 0,
+        seed: Optional[int] = None,
     ) -> Sequence[int]:
         """Generate tokens using the model.
         
@@ -239,6 +240,8 @@ class Qwen2:
             kcache_array: External KV cache k tensor array managed outside model.
             vcache_array: External KV cache v tensor array managed outside model.
             past_len: Number of valid tokens already written in external KV cache.
+            seed: Optional random seed for reproducible sampling. If set,
+                each decode step uses `seed + step_index`.
             
         Returns:
             Token IDs for current request + current output.
@@ -257,6 +260,8 @@ class Qwen2:
             raise ValueError("top_p must be in [0, 1]")
         if past_len < 0:
             raise ValueError("past_len must be non-negative")
+        if seed is not None and seed < 0:
+            raise ValueError("seed must be non-negative")
             
         generated = list(inputs)
         use_external_cache = bool(use_cache and kcache_array is not None and vcache_array is not None)
@@ -271,13 +276,17 @@ class Qwen2:
 
         output = list(generated) if use_external_cache else list(generated[past_len:])
         cached_token_len = past_len
+        sample_step = 0
 
         # Prefill phase
+        prefill_seed = (seed + sample_step) if seed is not None else -1
         next_token = self._infer_tokens(generated, active_kcache, active_vcache,
-                                        past_len if use_external_cache else 0, temperature, top_k, top_p)
+                        past_len if use_external_cache else 0, temperature, top_k, top_p,
+                        prefill_seed)
         output.append(next_token)
         generated.append(next_token)
         cached_token_len +=len(output)-1
+        sample_step += 1
         
 
         # Decode phase  
@@ -286,20 +295,23 @@ class Qwen2:
                 break
                 
             if use_external_cache:
+                step_seed = (seed + sample_step) if seed is not None else -1
                 next_token = self._infer_tokens([next_token], active_kcache, active_vcache, cached_token_len,
-                                                temperature, top_k, top_p)
+                                                temperature, top_k, top_p, step_seed)
                 cached_token_len += 1
             else:
+                step_seed = (seed + sample_step) if seed is not None else -1
                 next_token = self._infer_tokens(generated, active_kcache, active_vcache, 0,
-                                                temperature, top_k, top_p)
+                                                temperature, top_k, top_p, step_seed)
                 
             generated.append(next_token)
             output.append(next_token)
+            sample_step += 1
 
         return output
 
     def _infer_tokens(self, tokens: Sequence[int], kcache_array, vcache_array,
-                      past_len: int, temperature: float, top_k: int, top_p: float) -> int:
+                      past_len: int, temperature: float, top_k: int, top_p: float, seed: int = 42) -> int:
         """Perform inference on token sequence."""
         ntokens = len(tokens)
         TokenArrayType = ctypes.c_int64 * ntokens
@@ -315,4 +327,5 @@ class Qwen2:
             ctypes.c_float(temperature),
             ctypes.c_int(top_k),
             ctypes.c_float(top_p),
+            ctypes.c_int64(seed),
         )

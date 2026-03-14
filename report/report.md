@@ -16,6 +16,7 @@
   # 安装server包
   python3 -m pip install -e ./python/server-project --user --break-system-packages
   ```
+- 从[huggingface](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B)手动下载权重并指定权重加载目录（或使用snapshot download下载）
 ## 实现功能
 1. 实现随机采样算子randomsample(sample_val, sample_idx ,logits, temperature, top_k, top_p)
     - temperature：按如下公式 $$ y = t-softmax(x,temperature),\  y_i = \frac{\frac{x_i}{temperature}}{\sum_j \frac{x_j}{temperature}} $$ scale logits的系数

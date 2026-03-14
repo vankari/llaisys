@@ -249,7 +249,7 @@ __C {
 
     int64_t llaisysQwen2ModelInfer(struct LlaisysQwen2Model * model, int64_t * token_ids, size_t ntoken,
                                    llaisysTensor_t *kcache, llaisysTensor_t *vcache, size_t past_len,
-                                   float temperature, int top_k, float top_p) {
+                                   float temperature, int top_k, float top_p, int64_t seed) {
         if (!model || !token_ids || ntoken == 0) return -1;
 
         // If kv_cache != nullptr, it means KV Cache is used for performance.
@@ -484,7 +484,7 @@ __C {
         llaisysTensor_t index_tensor = tensorCreate(index_shape, 1, LLAISYS_DTYPE_I64, model->device, model->device_ids[0]);
         llaisysTensor_t value_tensor = tensorCreate(index_shape, 1, model->meta->dtype, model->device, model->device_ids[0]);
         llaisysRandomSample(index_tensor, value_tensor, tensorView(output_tensor_slice, output_tensor_slice_reshape_shape, 1),
-                    temperature, top_k, top_p);
+                    temperature, top_k, top_p, seed);
 
 
         // For NVIDIA device, need to copy data back to CPU to read it

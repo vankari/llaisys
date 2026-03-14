@@ -52,13 +52,15 @@ def _torch_reference_distribution(logits: torch.Tensor, temperature: float, top_
     return sorted_idx, probs
 
 
-def _sample_llaisys_many(logits_: llaisys.Tensor, nsample: int, temperature: float, top_k: int, top_p: float, device_name: str):
+def _sample_llaisys_many(logits_: llaisys.Tensor, nsample: int, temperature: float, top_k: int, top_p: float,
+                        device_name: str, seed_base: int | None = None):
     idx_t, idx_ = zero_tensor((1,), "i64", device_name)
     val_t, val_ = zero_tensor((1,), "f32", device_name)
     counts = {}
 
     for _ in range(nsample):
-        llaisys.Ops.random_sample(idx_, val_, logits_, temperature=temperature, top_k=top_k, top_p=top_p)
+        seed = None if seed_base is None else (seed_base + _)
+        llaisys.Ops.random_sample(idx_, val_, logits_, temperature=temperature, top_k=top_k, top_p=top_p, seed=seed)
         sampled = _read_scalar_i64(idx_, device_name)
         counts[sampled] = counts.get(sampled, 0) + 1
 
@@ -140,6 +142,32 @@ def test_random_sample_topp_constraint(device_name="cpu"):
     assert max_diff < 0.01, f"distribution mismatch too large: {max_diff}"
 
 
+def test_random_sample_seed_reproducibility(device_name="cpu"):
+    print("   seeded sampling should be reproducible")
+    logits = torch.tensor([2.0, 1.1, 0.8, -0.3, -1.8], dtype=torch.float32, device=torch_device(device_name))
+    _, logits_ = _torch_to_llaisys(logits, "f32", device_name)
+
+    counts_run1 = _sample_llaisys_many(
+        logits_,
+        nsample=256,
+        temperature=0.95,
+        top_k=5,
+        top_p=0.9,
+        device_name=device_name,
+        seed_base=12345,
+    )
+    counts_run2 = _sample_llaisys_many(
+        logits_,
+        nsample=256,
+        temperature=0.95,
+        top_k=5,
+        top_p=0.9,
+        device_name=device_name,
+        seed_base=12345,
+    )
+    assert counts_run1 == counts_run2
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -154,5 +182,6 @@ if __name__ == "__main__":
     test_random_sample_topp0_is_argmax(device_name=args.device)
     test_random_sample_topk_constraint(device_name=args.device)
     test_random_sample_topp_constraint(device_name=args.device)
+    test_random_sample_seed_reproducibility(device_name=args.device)
 
     print("\033[92mTest passed!\033[0m\n")

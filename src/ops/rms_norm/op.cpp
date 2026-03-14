@@ -3,6 +3,9 @@
 #include "../../utils.hpp"
 
 #include "cpu/rms_norm_cpu.hpp"
+#ifdef ENABLE_NVIDIA_API
+#include "cuda/rms_norm_cuda.cuh"
+#endif
 
 
 namespace llaisys::ops {
@@ -41,7 +44,7 @@ void rms_norm(tensor_t out, tensor_t in, tensor_t weight, float eps) {
                             out->dtype(), batch_size, feature_dim, eps);
 #ifdef ENABLE_NVIDIA_API
     case LLAISYS_DEVICE_NVIDIA:
-        TO_BE_IMPLEMENTED();
+    return cuda::rms_norm(out->data(), in->data(), weight->data(), out->dtype(), batch_size, feature_dim, eps);
         return;
 #endif
     default:

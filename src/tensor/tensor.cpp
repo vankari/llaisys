@@ -340,11 +340,18 @@ tensor_t Tensor::to(llaisysDeviceType_t device_type, int device) const {
     } else {
         kind = LLAISYS_MEMCPY_D2D;
     }
-    
-    
-    // For device-to-device copy, we need to use the source device's API
-    // The memcpy_sync should be called from the source device context for D2H/D2D
-    core::context().setDevice(_storage->deviceType(), _storage->deviceId());
+
+    llaisysDeviceType_t runtime_device_type = LLAISYS_DEVICE_CPU;
+    int runtime_device_id = 0;
+    if (_storage->deviceType() != LLAISYS_DEVICE_CPU) {
+        runtime_device_type = _storage->deviceType();
+        runtime_device_id = _storage->deviceId();
+    } else if (device_type != LLAISYS_DEVICE_CPU) {
+        runtime_device_type = device_type;
+        runtime_device_id = device;
+    }
+
+    core::context().setDevice(runtime_device_type, runtime_device_id);
     core::context().runtime().api()->memcpy_sync(dst_ptr, src_ptr, num_bytes, kind); 
     return new_tensor;
 }

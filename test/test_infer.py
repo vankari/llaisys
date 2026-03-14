@@ -37,8 +37,12 @@ def load_hf_model(model_path=None, device_name="cpu"):
 
 
 def hf_infer(
-    prompt, tokenizer, model, max_new_tokens=128, top_p=0.8, top_k=50, temperature=0.8
+    prompt, tokenizer, model, max_new_tokens=128, top_p=0.8, top_k=50, temperature=0.8, seed=None
 ):
+    if seed is not None:
+        torch.manual_seed(seed)
+        if model.device.type == "cuda":
+            torch.cuda.manual_seed_all(seed)
     input_content = tokenizer.apply_chat_template(
         conversation=[{"role": "user", "content": prompt}],
         add_generation_prompt=True,
@@ -65,7 +69,7 @@ def load_llaisys_model(model_path, device_name):
 
 
 def llaisys_infer(
-    prompt, tokenizer, model, max_new_tokens=128, top_p=0.8, top_k=50, temperature=0.8
+    prompt, tokenizer, model, max_new_tokens=128, top_p=0.8, top_k=50, temperature=0.8, seed=None
 ):
     input_content = tokenizer.apply_chat_template(
         conversation=[{"role": "user", "content": prompt}],
@@ -95,6 +99,7 @@ def llaisys_infer(
         kcache_array=slot.kcache_array,
         vcache_array=slot.vcache_array,
         past_len=slot.past_len,
+        seed=seed,
     )
     cache_pool.commit_session(session_id, outputs)
 
@@ -110,6 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", default=0.8, type=float)
     parser.add_argument("--top_k", default=50, type=int)
     parser.add_argument("--temperature", default=1.0, type=float)
+    parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--test", action="store_true")
 
     args = parser.parse_args()
@@ -130,6 +136,7 @@ if __name__ == "__main__":
         top_p=top_p,
         top_k=top_k,
         temperature=temperature,
+        seed=args.seed,
     )
     end_time = time.time()
     
@@ -155,7 +162,10 @@ if __name__ == "__main__":
         top_p=top_p,
         top_k=top_k,
         temperature=temperature,
+        seed=args.seed,
     )
+
+    
     
     end_time = time.time()
 

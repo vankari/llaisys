@@ -4,9 +4,13 @@
 #include "../../utils.hpp"
 
 #include "cpu/random_sample_cpu.hpp"
+#ifdef ENABLE_NVIDIA_API
+#include "cuda/random_sample_cuda.cuh"
+#endif
 
 namespace llaisys::ops {
-void random_sample(tensor_t sample_idx, tensor_t sample_val, tensor_t logits, float temperature, int top_k, float top_p) {
+void random_sample(tensor_t sample_idx, tensor_t sample_val, tensor_t logits, float temperature, int top_k, float top_p,
+                   int64_t seed) {
     CHECK_SAME_DEVICE(sample_idx, sample_val, logits);
     CHECK_SAME_DTYPE(sample_val->dtype(), logits->dtype());
 
@@ -25,7 +29,7 @@ void random_sample(tensor_t sample_idx, tensor_t sample_val, tensor_t logits, fl
 
     if (logits->deviceType() == LLAISYS_DEVICE_CPU) {
         return cpu::random_sample(sample_idx->data(), sample_val->data(), logits->data(), logits->dtype(), logits->numel(),
-                                  temperature, top_k, top_p);
+                                  temperature, top_k, top_p, seed);
     }
 
     llaisys::core::context().setDevice(logits->deviceType(), logits->deviceId());
@@ -33,10 +37,11 @@ void random_sample(tensor_t sample_idx, tensor_t sample_val, tensor_t logits, fl
     switch (logits->deviceType()) {
     case LLAISYS_DEVICE_CPU:
         return cpu::random_sample(sample_idx->data(), sample_val->data(), logits->data(), logits->dtype(), logits->numel(),
-                                  temperature, top_k, top_p);
+                                  temperature, top_k, top_p, seed);
 #ifdef ENABLE_NVIDIA_API
     case LLAISYS_DEVICE_NVIDIA:
-        TO_BE_IMPLEMENTED();
+        return cuda::random_sample(sample_idx->data(), sample_val->data(), logits->data(), logits->dtype(), logits->numel(),
+                                   temperature, top_k, top_p, seed);
         return;
 #endif
     default:
