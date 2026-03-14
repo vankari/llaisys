@@ -14,9 +14,9 @@ jobs:
       matrix:
         include:
           - target: ubuntu
-            runs_on: '["self-hosted", "linux", "x64", "cuda"]'
+            runs_on: '["linux", "cuda"]'
           - target: windows
-            runs_on: '["self-hosted", "windows", "x64", "cuda"]'
+            runs_on: '["windows", "cuda"]'
     runs-on: ${{ fromJson(matrix.runs_on) }}
     defaults:
       run:
