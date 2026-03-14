@@ -5,11 +5,14 @@ on:
     paths-ignore:
       - '**.md'
       - 'LICENSE'
+
+jobs:
   build-cuda:
     name: Build and test (CUDA)
     runs-on: [self-hosted, linux, x64, cuda]
     env:
       TMPDIR: ${{ github.workspace }}/.tmp
+      PYTHONUTF8: "1"
     steps:
 
     - name: checkout code
@@ -19,7 +22,7 @@ on:
       uses: xmake-io/github-action-setup-xmake@v1
       with:
         xmake-version: latest
-
+    
     - name: prepare tmp
       run: |
         mkdir -p "$TMPDIR"
@@ -34,9 +37,9 @@ on:
         xmake f --nv-gpu=y -c -v
         xmake -v
         xmake install
-
+    
     - name: Install Python
-      run: |
+      run: | 
         cd python
         pip install ./llaisyscore/
         pip install ./server-project/
