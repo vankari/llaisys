@@ -15,8 +15,6 @@ jobs:
         include:
           - target: ubuntu
             os: ubuntu-latest
-          - target: windows
-            os: windows-latest
     runs-on: ${{ matrix.os }}
     env:
       TMPDIR: ${{ github.workspace }}/.tmp
@@ -35,10 +33,6 @@ jobs:
       uses: Jimver/cuda-toolkit@v0.2.24
       with:
         cuda: "12.8.0"
-
-    - name: setup msvc (windows)
-      if: matrix.target == 'windows'
-      uses: ilammy/msvc-dev-cmd@v1
 
     - name: prepare tmp (linux)
       if: matrix.target == 'ubuntu'
@@ -123,11 +117,8 @@ jobs:
         if (-not $env:CUDA_PATH) {
           throw "CUDA_PATH is required for windows CUDA build"
         }
-        if (-not (Test-Path "$env:CUDA_PATH\bin\nvcc.exe")) {
-          throw "nvcc.exe not found at $env:CUDA_PATH\\bin\\nvcc.exe"
-        }
         $env:Path = "$env:CUDA_PATH\bin;$env:Path"
-        xmake f -p windows -a x64 --toolchain=msvc --cuda="$env:CUDA_PATH" --cu="$env:CUDA_PATH\bin\nvcc.exe" --nv-gpu=y -c -v
+        xmake f -p windows -a x64 --toolchain=msvc --cuda="$env:CUDA_PATH" --nv-gpu=y -c -v
         xmake -v
         xmake install
       shell: pwsh
