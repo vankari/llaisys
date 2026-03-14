@@ -18,17 +18,19 @@ jobs:
     - name: checkout code
       uses: actions/checkout@v4
 
-    - name: install xmake
-      uses: xmake-io/github-action-setup-xmake@v1
-      with:
-        xmake-version: latest
-    
     - name: prepare tmp
       run: |
         mkdir -p "$TMPDIR"
 
-    - name: check cuda toolchain
+    - name: check preinstalled toolchain
       run: |
+        command -v python
+        command -v pip
+        command -v xmake
+        command -v nvcc
+        python --version
+        pip --version
+        xmake --version
         nvidia-smi
         nvcc --version
 
