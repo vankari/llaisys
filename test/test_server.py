@@ -127,7 +127,6 @@ def test_chat_completion_stream(app_module=None):
 
 
 def test_chat_completion_empty_messages(app_module=None):
-    app_module = _load_app_with_real_engine()
     client = TestClient(app_module.app)
 
     payload = {
